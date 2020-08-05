@@ -238,6 +238,14 @@ if __name__ == '__main__':
 			if fname not in r_data:
 				r_data[fname] = []
 
+			# if we use an authoritative server instead of direct dns communication
+			# discard all messages with unexpected label count.
+			# if the client requests. e.g part1.part2.part.3.mydomain.xyz
+			# the recursive resolver may resolve. mydomain.xyz, part3.mydomain.xyz,
+			# part2.part3.mydomain.xyz before transimitting our payload
+			if len(tmp_data) != s:
+				continue
+
 			print "%s[>]%s len: '%d bytes'\t- %s" % (c["y"], c["e"], len(p.data_text), fname)
 			if v:
 				print '%s[>>]%s %s -> %s:53' % (c["b"], c["e"], p.data_text, ip)
