@@ -1,4 +1,20 @@
-# dnsteal v 2.0
+# dnsteal v 2.0 (with support for public dns-infrastructure)
+
+==== MODIFICATIONS ====
+
+NOTE: this version of dnsteal is modified to allow the usage with the public dns infrastructure.
+To get this working the format of dns queries was changed to:
+
+3x6-.{index}-.data_0.data_1....data_n.file.name.authorative.domain
+
+* Label 1: The 3x6 is just a magic number to identify valid requests.
+* Label 2: The index of the payload is now also transimtted. A recursive resolver may send a request twice if we dont respond in time. Sending the index allows us to filter out duplicates and also see if a dns-message went missing somewhere.
+
+WARNING: These modifications reduce the payload capacity of dnsteal.
+We now need 5 bytes for magic-nr (4 bytes + 1 length-byte). Also the index takes (length of index) + 2 bytes. 
+Also our authorative server domain name needs to be at the end of the qname, so that we actually get the messages. 
+
+=======================
 
 This is a fake DNS server that allows you to stealthily extract files from a victim machine through DNS requests. 
 
