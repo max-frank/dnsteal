@@ -4,7 +4,7 @@
 #
 # TODO (in order of priority):
 #
-# * Windows PowerShell command variant (This will be 2.1 coming soon). 
+# * Windows PowerShell command variant (This will be 2.1 coming soon).
 # * fix bugs when no filename is entered (i know it exists just cba atm)
 #
 
@@ -19,6 +19,49 @@ import base64
 
 c = { "r" : "\033[1;31m", "g": "\033[1;32m", "y" : "\033[1;33m", "b" : "\033[1;34m", "e" : "\033[0m" }
 VERSION = "2.0"
+
+DNS_QUESTION_INDEX = 12
+
+def first_rr_index(dns):
+    """Get the index of the first resource record of an dns message."""
+    # header takes up 12 bytes
+    i = DNS_QUESTION_INDEX
+    # skip the qname
+    # QNAME is in domain format: [len]label,[len]label,...,0
+    label_len = ord(dns[i])
+    while label_len != 0:
+        i += label_len + 1
+        label_len = ord(dns[i])
+    # skip the last null-label, the qtype and qclass
+    i += 5
+    return i
+
+def test_first_rr_index():
+    dns = '\x00\x00\x00\x00' +\
+        '\x00\x01' +\
+        '\x00\x00' +\
+        '\x00\x00' +\
+        '\x00\x00' +\
+        '\x06google\x02de\x00' +\
+        '\x00\x00' +\
+        '\x00\x00'
+
+
+    i = first_rr_index(dns)
+    assert i == 27
+
+
+    dns = '\x00\x00\x00\x00' +\
+        '\x00\x01' +\
+        '\x00\x00' +\
+        '\x00\x00' +\
+        '\x00\x00' +\
+        '\x00' +\
+        '\x00\x00' +\
+        '\x00\x00'
+    i = first_rr_index(dns)
+    assert i == 17
+
 
 class DNSQuery:
 	def __init__(self, data):
@@ -36,13 +79,15 @@ class DNSQuery:
 
 	def request(self, ip):
 		packet=''
+                rr_i = first_rr_index(self.data)
 		if self.data_text:
 			packet+=self.data[:2] + "\x81\x80"
-			packet+=self.data[4:6] + self.data[4:6] + '\x00\x00\x00\x00'   # Questions and Answers Counts
-			packet+=self.data[12:]                                         # Original Domain Name Question
+                        packet+=self.data[4:6] + '\x00\x01' + self.data[8:12]          # Questions and Answers Counts
+			packet+=self.data[12:rr_i]                                     # Original Domain Name Question
 			packet+='\xc0\x0c'                                             # Pointer to domain name
 			packet+='\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04'             # Response type, ttl and resource data length -> 4 bytes
 			packet+=str.join('',map(lambda x: chr(int(x)), ip.split('.'))) # 4bytes of IP
+                        packet+=self.data[rr_i:]
 		return packet
 
 def save_to_file(r_data, z, v):
@@ -167,7 +212,7 @@ def banner():
 
 	print "\033[1;32m",
 	print """
-      ___  _  _ ___ _            _ 
+      ___  _  _ ___ _            _
      |   \| \| / __| |_ ___ __ _| |
      | |) | .` \__ \  _/ -_) _` | |
      |___/|_|\_|___/\__\___\__,_|_|v%s
