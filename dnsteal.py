@@ -129,10 +129,10 @@ def first_rr_index(dns):
     i = DNS_QUESTION_INDEX
     # skip the qname
     # QNAME is in domain format: [len]label,[len]label,...,0
-    label_len = ord(dns[i])
+    label_len = dns[i]
     while label_len != 0:
         i += label_len + 1
-        label_len = ord(dns[i])
+        label_len = dns[i]
     # skip the last null-label, the qtype and qclass
     i += 5
     return i
@@ -170,29 +170,31 @@ def test_first_rr_index():
 class DNSQuery:
     def __init__(self, data):
         self.data = data
-        self.data_text = ""
+        self.data_text = b""
 
-        tipo = (ord(data[2]) >> 3) & 15  # Opcode bits
+        tipo = (data[2] >> 3) & 15  # Opcode bits
         if tipo == 0:  # Standard query
             ini = 12
-            lon = ord(data[ini])
+            lon = data[ini]
         while lon != 0:
-            self.data_text += data[ini + 1 : ini + lon + 1] + "."
+            self.data_text += data[ini + 1 : ini + lon + 1] + b"."
             ini += lon + 1
-            lon = ord(data[ini])
+            lon = data[ini]
 
     def request(self, ip):
-        packet = ""
+        packet = b""
         rr_i = first_rr_index(self.data)
         if self.data_text:
-            packet += self.data[:2] + "\x81\x80"
+            packet += self.data[:2] + b"\x81\x80"
             packet += (
-                self.data[4:6] + "\x00\x01" + self.data[8:12]
+                self.data[4:6] + b"\x00\x01" + self.data[8:12]
             )  # Questions and Answers Counts
             packet += self.data[12:rr_i]  # Original Domain Name Question
-            packet += "\xc0\x0c"  # Pointer to domain name
-            packet += "\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04"  # Response type, ttl and resource data length -> 4 bytes
-            packet += str.join("", [chr(int(x)) for x in ip.split(".")])  # 4bytes of IP
+            packet += b"\xc0\x0c"  # Pointer to domain name
+            packet += b"\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04"  # Response type, ttl and resource data length -> 4 bytes
+            packet += (str.join("", [chr(int(x)) for x in ip.split(".")])).encode(
+                "utf-8"
+            )  # 4bytes of IP
             packet += self.data[rr_i:]
         return packet
 
@@ -203,7 +205,7 @@ def save_to_file(r_data, z, v):
 
         file_seed = time.strftime("%Y-%m-%d_%H-%M-%S")
         # fname = f"received_{file_seed}_{key}"
-        flatdata = ""
+        flatdata = b""
 
         if not value:
             logger.debug(
@@ -217,7 +219,7 @@ def save_to_file(r_data, z, v):
         try:
             for i in range(0, max(value.keys()) + 1):
                 for block in value[i]:
-                    fixed_block = block[:-1].replace("*", "+")
+                    fixed_block = block[:-1].replace(b"*", b"+")
                     flatdata += fixed_block
         except KeyError as key_error:
             logger.exception("Missing index for file.", key=key, exc_info=True)
@@ -253,7 +255,7 @@ def save_to_file(r_data, z, v):
         f.write(flatdata)
         f.close()
 
-        md5sum = hashlib.md5(open(fname, "r").read()).hexdigest()
+        md5sum = hashlib.md5(open(fname, "rb").read()).hexdigest()
         logger.info("Saved file", file=fname, md5sum=md5sum)
 
 
@@ -413,19 +415,19 @@ if __name__ == "__main__":
             p = DNSQuery(data)
             udp.sendto(p.request(ip), addr)
 
-            req_split = p.data_text.split(".")
+            req_split = p.data_text.split(b".")
             req_split.pop()  # fix trailing dot... cba to fix this
 
             dlen = len(req_split)
-            fname = ""
+            fname = b""
             tmp_data = []
 
             for n in range(0, dlen):
-                if req_split[n][len(req_split[n]) - 1] == "-":
+                if chr(req_split[n][len(req_split[n]) - 1]) == "-":
                     tmp_data.append(req_split[n])
                 else:
                     # Filename
-                    fname += req_split[n] + "."
+                    fname += req_split[n] + b"."
 
             fname = fname[:-1]
 
@@ -436,11 +438,12 @@ if __name__ == "__main__":
                 logger.debug(
                     "Skipping packet since it does have less than 2 payloads",
                     packet=req_split,
+                    data=tmp_data,
                 )
                 continue
 
             magic_nr = tmp_data[0]
-            if magic_nr != "3x6-":
+            if magic_nr != b"3x6-":
                 logger.debug(
                     "Skipping packet since it does not have magic nr 3x6",
                     packet=req_split,
@@ -448,7 +451,7 @@ if __name__ == "__main__":
                 continue
 
             try:
-                index = int(tmp_data[1].rstrip("-"))
+                index = int(tmp_data[1].rstrip(b"-"))
             except ValueError as err:
                 # This should usually not happen
                 logger.debug(
