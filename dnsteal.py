@@ -1,15 +1,19 @@
 #!/usr/bin/env python
 #  g0dmode
 ########################
-
 import base64
 import binascii
 import hashlib
+import logging
+import logging.config
 import re
 import socket
 import sys
 import time
 import zlib
+from typing import Optional
+
+import structlog
 
 c = {
     "r": "\033[1;31m",
@@ -21,6 +25,102 @@ c = {
 VERSION = "2.0"
 
 DNS_QUESTION_INDEX = 12
+
+logger = structlog.get_logger()
+
+
+def configure_logging(
+    level: int = 10,
+    log_file: Optional[str] = None,
+    color: bool = True,
+):
+    """Configures the logging system
+
+    Args:
+        level: The log level
+        log_file: Optional the log file to log the json log to
+        color: If the console log should print in colors or not
+    """
+    # ensure we start from default config
+    structlog.reset_defaults()
+
+    timestamper = structlog.processors.TimeStamper(
+        utc=True,
+        key="timestamp",
+    )
+    # shared processors for standard lib and structlog
+    shared_processors = [
+        structlog.stdlib.add_log_level,
+        timestamper,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+    ]
+
+    # processor only for structlog
+    processors = [structlog.stdlib.filter_by_level]
+    processors.extend(shared_processors)
+    processors.append(structlog.stdlib.ProcessorFormatter.wrap_for_formatter)
+
+    handlers = {}
+    # configure console logging
+    handlers["console"] = {
+        "level": "DEBUG",
+        "class": "logging.StreamHandler",
+        "formatter": "color" if color else "plain",
+    }
+
+    # configure file logging
+    if log_file is not None:
+        handlers["file"] = {
+            "level": "DEBUG",
+            "class": "logging.handlers.WatchedFileHandler",
+            "filename": log_file,
+            "formatter": "json",
+        }
+    # log formatters
+    log_formatters = {
+        "plain": {
+            "()": structlog.stdlib.ProcessorFormatter,
+            "processor": structlog.dev.ConsoleRenderer(colors=False),
+            "foreign_pre_chain": shared_processors,
+        },
+        "json": {
+            "()": structlog.stdlib.ProcessorFormatter,
+            "processor": structlog.processors.JSONRenderer(
+                sort_keys=True,
+            ),
+            "foreign_pre_chain": shared_processors,
+        },
+    }
+    if color:
+        log_formatters["color"] = {
+            "()": structlog.stdlib.ProcessorFormatter,
+            "processor": structlog.dev.ConsoleRenderer(colors=True),
+            "foreign_pre_chain": shared_processors,
+        }
+    # configure standard lib logging
+    logging.config.dictConfig(
+        {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "formatters": log_formatters,
+            "handlers": handlers,
+            "loggers": {"": {"handlers": handlers.keys(), "propagate": True}},
+        }
+    )
+
+    # apply structlog config
+    structlog.configure(
+        processors=processors,
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
+    )
+
+    # set the log level
+    logger.setLevel(level)
 
 
 def first_rr_index(dns):
@@ -99,8 +199,6 @@ class DNSQuery:
 
 def save_to_file(r_data, z, v):
 
-    print("\n")
-
     for key, value in r_data.items():
 
         file_seed = time.strftime("%Y-%m-%d_%H-%M-%S")
@@ -108,14 +206,13 @@ def save_to_file(r_data, z, v):
         flatdata = ""
 
         if not value:
-            if v:
-                print(
-                    f"Skipping reassembly of file {fname}, since no payload was received."
-                )
+            logger.debug(
+                "Skipping reassembly of file, since no payload was received.",
+                file=fname,
+            )
             continue
 
-        if v:
-            print(f"Reassembling {fname} from {value}")
+        logger.debug("Reassembling file", file=fname, value=value)
 
         try:
             for i in range(0, max(value.keys()) + 1):
@@ -123,49 +220,41 @@ def save_to_file(r_data, z, v):
                     fixed_block = block[:-1].replace("*", "+")
                     flatdata += fixed_block
         except KeyError as key_error:
-            print(f"{c['r']}[Error]{c['e']} Missing index {key_error} of file '{key}'.")
+            logger.exception("Missing index for file.", key=key, exc_info=True)
 
         try:
             f = open(fname, "wb")
         except Exception:
-            print(f"{c['r']}[Error]{c['e']} Opening file '{fname}' to save data.")
+            logger.exception("Failed opening file", file=fname, exc_info=True)
             exit(1)
         try:
-            if v:
-                print(f"{c['y']}[Info]{c['e']} base64 decoding data ({key}).")
+            logger.debug("Base64 decoding data.", key=key)
             flatdata = base64.b64decode(
                 flatdata
             )  # test if padding correct by using a try/catch
         except Exception:
             f.close()
-            print(
-                f"{c['r']}[Error]{ c['e']} Incorrect padding on base64 encoded data.."
-            )
+            logger.exception("Incorrect padding on base64 encoded data..")
             exit(1)
 
         if z:
-            if v:
-                print(f"{c['y']}[Info]{c['e']} Unzipping data ({key}).")
+            logger.debug("Unzipping data", key=key)
 
             try:
                 x = zlib.decompressobj(16 + zlib.MAX_WBITS)
                 flatdata = x.decompress(flatdata)
             except:
-                print(
-                    f"{c['r']}[Error]{c['e']} Could not unzip data, did you specify the -z switch ?"
+                logger.exception(
+                    "Could not unzip data, did you specify the -z switch ?"
                 )
                 exit(1)
 
-                print(f"{c['y']}[Info]{c['e']} Saving received bytes to './{fname}'")
-            f.write(flatdata)
-            f.close()
-        else:
-            print(f"{c['y']}[Info]{c['e']} Saving bytes to './{fname}'")
-            f.write(flatdata)
-            f.close()
+        logger.info("Saving received bytes to file", file=fname)
+        f.write(flatdata)
+        f.close()
 
         md5sum = hashlib.md5(open(fname, "r").read()).hexdigest()
-        print(f"{c['g']}[md5sum]{c['e']} '{md5sum}'\n")
+        logger.info("Saved file", file=fname, md5sum=md5sum)
 
 
 def usage(str=""):
@@ -301,17 +390,18 @@ if __name__ == "__main__":
     ############################################################################################
     banner()
 
+    configure_logging()
     udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     try:
         udp.bind((ip, 53))
     except:
-        print(f"{c['r']}[Error]{c['e']} Cannot bind to address {ip}:53")
+        logger.exception("Cannot bind to address", ip=ip, port=53)
         exit(1)
 
-    print(f"{c['g']}[+]{c['e']} DNS listening on '{ip}:53'")
+    logger.info("DNS server listening", ip=ip, port=53)
     p_cmds(s, b, ip, z)
-    print(f"{c['g']}[+]{c['e']} Once files have sent, use Ctrl+C to exit and save.\n")
+    logger.info("Once files have sent, use Ctrl+C to exit and save.")
 
     try:
         r_data = {}  # map of: file-name -> (map of: index -> transmitted data)
@@ -343,33 +433,33 @@ if __name__ == "__main__":
                 r_data[fname] = {}
 
             if len(tmp_data) < 2:
-                if v:
-                    print(
-                        f"Skipping packet: {req_split} since it does have less than 2 payloads"
-                    )
+                logger.debug(
+                    "Skipping packet since it does have less than 2 payloads",
+                    packet=req_split,
+                )
                 continue
 
             magic_nr = tmp_data[0]
             if magic_nr != "3x6-":
-                if v:
-                    print(
-                        f"Skipping packet: {req_split} since it does not have magic nr 3x6"
-                    )
+                logger.debug(
+                    "Skipping packet since it does not have magic nr 3x6",
+                    packet=req_split,
+                )
                 continue
 
             try:
                 index = int(tmp_data[1].rstrip("-"))
             except ValueError as err:
                 # This should usually not happen
-                if v:
-                    print(
-                        f"Skipping packet: {req_split} since its index was not a number"
-                    )
+                logger.debug(
+                    "Skipping packet since its index was not a number", packet=req_split
+                )
                 continue
 
-            print(f"{c['y']}[>]{c['e']} len: '{len(p.data_text)} bytes'\t- {fname}")
-            if v:
-                print(f"{c['b']}[>>]{c['e']} {p.data_text} -> {ip}:53")
+            logger.info("Received data", data_length=len(p.data_text), file=fname)
+            logger.debug(
+                "Received data text on server", data=p.data_text, ip=ip, port=53
+            )
 
             r_data[fname][index] = tmp_data[2:]  # first 2 packets are not payload
 
