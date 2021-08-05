@@ -7,8 +7,11 @@ import binascii
 import hashlib
 import logging
 import logging.config
+import random
 import re
+import signal
 import socket
+import struct
 import sys
 import time
 import zlib
@@ -30,6 +33,7 @@ TIME_FORMATS = [
 DNS_QUESTION_INDEX = 12
 
 logger = structlog.get_logger()
+kill_switch = False
 
 
 def configure_logging(
@@ -170,6 +174,16 @@ def test_first_rr_index():
     assert i == 17
 
 
+class KillSwitchhandler:
+    def __init__(self, log):
+        self.log = log
+
+    def __call__(self, signalNumber, frame):
+        self.log.info("Received kill switch")
+        global kill_switch
+        kill_switch = True
+
+
 class DNSQuery:
     def __init__(self, data):
         self.data = data
@@ -184,7 +198,22 @@ class DNSQuery:
             ini += lon + 1
             lon = data[ini]
 
-    def request(self, ip):
+    def get_response_ip(self, kill_switch, kill_switch_ip):
+        if kill_switch_ip is not None:
+            kill_switch_ip = (
+                str.join("", [chr(int(x)) for x in kill_switch_ip.split(".")])
+            ).encode("utf-8")
+
+            if kill_switch:
+                return kill_switch_ip
+            ip = kill_switch_ip
+            while ip == kill_switch_ip:
+                ip = struct.pack(">I", random.randint(1, 0xFFFFFFFF))
+            return ip
+
+        return struct.pack(">I", random.randint(1, 0xFFFFFFFF))
+
+    def request(self, kill_switch, kill_switch_ip):
         packet = b""
         rr_i = first_rr_index(self.data)
         if self.data_text:
@@ -195,9 +224,9 @@ class DNSQuery:
             packet += self.data[12:rr_i]  # Original Domain Name Question
             packet += b"\xc0\x0c"  # Pointer to domain name
             packet += b"\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04"  # Response type, ttl and resource data length -> 4 bytes
-            packet += (str.join("", [chr(int(x)) for x in ip.split(".")])).encode(
-                "utf-8"
-            )  # 4bytes of IP
+            packet += self.get_response_ip(
+                kill_switch, kill_switch_ip
+            )  #  # 4bytes of IP
             packet += self.data[rr_i:]
         return packet
 
@@ -383,6 +412,11 @@ Advanced:\n"""
         type=str,
         help="Optional server stop time as ISO datetime",
     )
+    parser.add_argument(
+        "--kill-switch",
+        type=str,
+        help="Optional an IP address to return once the agent kill switch was triggered",
+    )
     parser.add_argument("ip", type=str, help="The IP address to bind to")
     parser.set_defaults(
         v=False,
@@ -403,6 +437,7 @@ Advanced:\n"""
     flen = args.f
     ip = args.ip
     domain = args.domain
+    kill_switch_ip = args.kill_switch
     log_level = logging.DEBUG if args.v else logging.INFO
 
     endtime = None
@@ -431,6 +466,11 @@ Advanced:\n"""
         logger.error("Invalid listen IP address", ip=ip)
         exit(1)
 
+    if kill_switch_ip is not None and re.match(regx_ip, kill_switch_ip) == None:
+        parser.print_help()
+        logger.error("Invalid kill switch IP address", kill_switch_ip=kill_switch_ip)
+        exit(1)
+
     magic_nr_size = 4
     max_index = 5
     domain_len = 0 if domain is None else len(domain)
@@ -447,6 +487,10 @@ Advanced:\n"""
 
     ############################################################################################
     print(banner())
+
+    if kill_switch_ip is not None:
+        kill_switch_handler = KillSwitchhandler(logger)
+        signal.signal(signal.SIGHUP, kill_switch_handler)
 
     udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp.settimeout(10)
@@ -475,7 +519,7 @@ Advanced:\n"""
             try:
                 data, addr = udp.recvfrom(1024)
                 p = DNSQuery(data)
-                udp.sendto(p.request(ip), addr)
+                udp.sendto(p.request(kill_switch, kill_switch_ip), addr)
 
                 req_split = p.data_text.split(b".")
                 req_split.pop()  # fix trailing dot... cba to fix this
