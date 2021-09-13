@@ -519,7 +519,6 @@ Advanced:\n"""
             try:
                 data, addr = udp.recvfrom(1024)
                 p = DNSQuery(data)
-                udp.sendto(p.request(kill_switch, kill_switch_ip), addr)
 
                 req_split = p.data_text.split(b".")
                 req_split.pop()  # fix trailing dot... cba to fix this
@@ -550,9 +549,13 @@ Advanced:\n"""
                         packet=req_split,
                         data=tmp_data,
                     )
+                    udp.sendto(p.request(True, kill_switch_ip), addr)
                     continue
+                else:
+                    udp.sendto(p.request(kill_switch, kill_switch_ip), addr)
 
                 magic_nr = tmp_data[0]
+
                 if magic_nr == b"3x6-":
                     try:
                         index = int(tmp_data[1].rstrip(b"-"))
